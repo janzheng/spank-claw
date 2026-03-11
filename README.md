@@ -1,5 +1,7 @@
 # spank
 
+**English** | [简体中文][readme-zh-link]
+
 Slap your MacBook, it yells back.
 
 > "this is the most amazing thing i've ever seen" — [@kenwheeler](https://x.com/kenwheeler)
@@ -27,6 +29,7 @@ go install github.com/taigrr/spank@latest
 ```
 
 > **Note:** `go install` places the binary in `$GOBIN` (if set) or `$(go env GOPATH)/bin` (which defaults to `~/go/bin`). Copy it to a system path so `sudo spank` works. For example, with the default Go settings:
+>
 > ```bash
 > sudo cp "$(go env GOPATH)/bin/spank" /usr/local/bin/spank
 > ```
@@ -225,3 +228,6 @@ Sensor reading and vibration detection ported from [olvvier/apple-silicon-accele
 ## License
 
 MIT
+
+<!-- Links -->
+[readme-zh-link]: ./README-zh.md
