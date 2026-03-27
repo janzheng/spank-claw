@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="doc/logo.png" alt="spank-claw logo" width="200">
+  <img src="doc/spank-claw-logo.jpg" alt="spank-claw logo" width="300">
 </p>
 
 # spank-claw
