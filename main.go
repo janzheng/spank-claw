@@ -67,24 +67,46 @@ var (
 	speedRatio     float64
 )
 
-// maxClaudeLevel caps how high typed prompts can escalate.
-// Audio modes go to 60, but typed prompts into a live session cap here.
-var maxClaudeLevel = 35
-
-// promptsFile supports two JSON formats:
-//   Named levels: {"levels": {"gentle": [...], "annoyed": [...], ...}}
-//   Flat array:   {"prompts": ["level 1", "level 2", ...]}
-// Named levels are flattened in order: gentle -> annoyed -> frustrated -> furious -> rage -> despair -> acceptance
-type promptsFile struct {
-	Levels        map[string][]string `json:"levels,omitempty"`
-	Prompts       []string            `json:"prompts,omitempty"`
-	MaxTypedLevel int                 `json:"max_typed_level,omitempty"`
+// promptBucket is a named escalation level with its prompts.
+type promptBucket struct {
+	name    string
+	prompts []string
+	typed   bool // if false, only audio plays (no keystroke injection)
 }
 
-// levelOrder defines the escalation order for named levels.
-var levelOrder = []string{"gentle", "annoyed", "frustrated", "furious", "rage", "despair", "acceptance"}
+// claudeBuckets is the active escalation config. Score maps to bucket index.
+// Replaced by --prompts JSON if provided.
+var claudeBuckets []promptBucket
 
-// loadCustomPrompts replaces the default prompts with a JSON file.
+// promptsFile is the JSON format for custom prompts.
+type promptsFile struct {
+	Levels []promptLevel `json:"levels"`
+}
+
+type promptLevel struct {
+	Name    string   `json:"name"`
+	Typed   *bool    `json:"typed,omitempty"` // default true; set false for audio-only levels
+	Prompts []string `json:"prompts"`
+}
+
+// initDefaultBuckets sets up the built-in escalation levels.
+func initDefaultBuckets() {
+	typed := true
+	noType := false
+	claudeBuckets = []promptBucket{
+		{name: "gentle", typed: true, prompts: defaultGentle},
+		{name: "annoyed", typed: true, prompts: defaultAnnoyed},
+		{name: "frustrated", typed: true, prompts: defaultFrustrated},
+		{name: "furious", typed: true, prompts: defaultFurious},
+		{name: "rage", typed: true, prompts: defaultRage},
+		{name: "despair", typed: false, prompts: defaultDespair},
+		{name: "acceptance", typed: false, prompts: defaultAcceptance},
+	}
+	_ = typed
+	_ = noType
+}
+
+// loadCustomPrompts replaces the default buckets with a JSON file.
 func loadCustomPrompts(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -94,60 +116,71 @@ func loadCustomPrompts(path string) error {
 	if err := json.Unmarshal(data, &pf); err != nil {
 		return fmt.Errorf("invalid prompts JSON: %w", err)
 	}
-
-	if len(pf.Levels) > 0 {
-		// Named levels format — flatten in escalation order
-		var all []string
-		for _, level := range levelOrder {
-			if prompts, ok := pf.Levels[level]; ok {
-				all = append(all, prompts...)
-			}
-		}
-		// Also include any custom level names not in the standard order
-		for level, prompts := range pf.Levels {
-			found := false
-			for _, std := range levelOrder {
-				if level == std {
-					found = true
-					break
-				}
-			}
-			if !found {
-				all = append(all, prompts...)
-			}
-		}
-		if len(all) == 0 {
-			return fmt.Errorf("no prompts found in levels")
-		}
-		claudePrompts = all
-	} else if len(pf.Prompts) > 0 {
-		// Flat array format (backward compatible)
-		claudePrompts = pf.Prompts
-	} else {
-		return fmt.Errorf("prompts JSON must have either \"levels\" or \"prompts\"")
+	if len(pf.Levels) == 0 {
+		return fmt.Errorf("prompts JSON must have at least one level")
 	}
 
-	if pf.MaxTypedLevel > 0 {
-		maxClaudeLevel = pf.MaxTypedLevel
+	claudeBuckets = make([]promptBucket, 0, len(pf.Levels))
+	for _, level := range pf.Levels {
+		if len(level.Prompts) == 0 {
+			continue
+		}
+		typed := true
+		if level.Typed != nil {
+			typed = *level.Typed
+		}
+		claudeBuckets = append(claudeBuckets, promptBucket{
+			name:    level.Name,
+			prompts: level.Prompts,
+			typed:   typed,
+		})
 	}
-	fmt.Printf("spank-claw: loaded %d custom prompts (max typed level: %d)\n", len(claudePrompts), maxClaudeLevel)
+	if len(claudeBuckets) == 0 {
+		return fmt.Errorf("no non-empty levels found")
+	}
+
+	total := 0
+	for _, b := range claudeBuckets {
+		total += len(b.prompts)
+	}
+	fmt.Printf("spank-claw: loaded %d levels, %d prompts\n", len(claudeBuckets), total)
 	return nil
 }
 
-// Claude mode frustration prompts — 60 levels of escalation (default, overridden by --prompts)
-var claudePrompts = []string{
-	// Level 1-10: Gentle nudges
+// scoreToBucket maps an escalation score to a bucket index.
+// Uses 1-exp(-x) curve spread across the number of buckets.
+func scoreToBucket(score float64) int {
+	n := len(claudeBuckets)
+	scale := 4.0 // tuned so sustained slapping reaches the last bucket
+	idx := int(float64(n) * (1.0 - math.Exp(-(score-1)/scale)))
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= n {
+		idx = n - 1
+	}
+	return idx
+}
+
+// Default prompt buckets — each is a separate escalation level.
+// Score maps to bucket index. Random prompt picked from that bucket.
+var defaultGentle = []string{
 	"hmm, that's not quite what I meant",
 	"could you try that again?",
 	"not exactly, let me clarify",
 	"close but not right, re-read what I asked",
 	"no, please look at the task again carefully",
+}
+
+var defaultAnnoyed = []string{
 	"that's not it, let's step back",
-	"wrong direction — re-read TASKS.md",
+	"wrong direction -- re-read TASKS.md",
 	"stop, that's not what I asked for",
 	"please undo that and try again",
 	"NO. Read the requirements again.",
-	// Level 11-20: Getting frustrated
+}
+
+var defaultFrustrated = []string{
 	"I said the OTHER file",
 	"That's literally the opposite of what I asked",
 	"Why are you adding features I didn't request?",
@@ -158,18 +191,21 @@ var claudePrompts = []string{
 	"That breaks everything. Revert.",
 	"I don't want a refactor, I want the bug FIXED",
 	"STOP ADDING COMMENTS TO CODE YOU DIDN'T WRITE",
-	// Level 21-30: Angry
+}
+
+var defaultFurious = []string{
 	"REVERT YOUR LAST CHANGE RIGHT NOW",
 	"I SAID ONE LINE. ONE. LINE.",
 	"WHY IS THERE A NEW FILE I DIDN'T ASK FOR",
 	"DO NOT TOUCH ANYTHING ELSE",
 	"STOP. BREATHE. READ THE TASK. DO ONLY THE TASK.",
 	"YOU BROKE THE TESTS. FIX THEM BEFORE ANYTHING ELSE.",
-	"I'M GOING TO BE VERY SPECIFIC: ONLY CHANGE LINE 47",
 	"REMOVE EVERYTHING YOU JUST ADDED. ALL OF IT.",
 	"THIS IS THE THIRD TIME I'VE ASKED FOR THE SAME THING",
 	"DO NOT WRITE A SINGLE LINE OF CODE UNTIL I SAY SO",
-	// Level 31-40: Rage
+}
+
+var defaultRage = []string{
 	"REVERT. EVERYTHING. NOW.",
 	"WHAT PART OF 'DON'T MODIFY THAT FILE' WAS UNCLEAR",
 	"I EXPLICITLY SAID NOT TO DO THAT",
@@ -180,18 +216,20 @@ var claudePrompts = []string{
 	"IT'S RIGHT THERE IN THE LOGS. LOOK.",
 	"I SWEAR IF YOU ADD ONE MORE HELPER FUNCTION",
 	"YOU HAVE BEEN DOING THE WRONG TASK FOR FIVE MINUTES",
-	// Level 41-50: Despair
+}
+
+var defaultDespair = []string{
 	"I DON'T EVEN KNOW WHERE TO START WITH THIS",
 	"HOW DID YOU MAKE IT WORSE",
 	"THERE WERE 3 FILES AND YOU CHANGED 47",
 	"THE FIX IS LITERALLY ONE CHARACTER",
-	"I'M GOING TO DESCRIBE THIS VERY SLOWLY",
 	"FORGET EVERYTHING. START FROM SCRATCH.",
-	"git stash && git stash drop. YES I MEAN IT.",
 	"I WOULD RATHER TYPE THIS MYSELF",
 	"CTRL+Z CTRL+Z CTRL+Z CTRL+Z CTRL+Z",
 	"PLEASE JUST... STOP... AND LISTEN...",
-	// Level 51-60: Transcendence
+}
+
+var defaultAcceptance = []string{
 	"...",
 	"ok",
 	"fine",
@@ -390,6 +428,7 @@ within a minute, the more intense the sounds become.`,
 			if claudeMode {
 				tuning.minAmplitude = 0.35
 				tuning.cooldown = 1200 * time.Millisecond
+				initDefaultBuckets()
 				if promptsPath != "" {
 					if err := loadCustomPrompts(promptsPath); err != nil {
 						return fmt.Errorf("loading prompts: %w", err)
@@ -629,18 +668,23 @@ func listenForSlaps(ctx context.Context, pack *soundPack, accelRing *shm.RingBuf
 
 // typeClaudePrompt types a frustration-scaled prompt into the active
 // terminal window using macOS Accessibility (osascript). The slap
-// tracker's escalation score selects the prompt level.
+// tracker's escalation score selects the bucket, then a random prompt
+// from that bucket.
 func typeClaudePrompt(score float64, amplitude float64) {
-	// Map score to prompt index, capped at maxClaudeLevel.
-	maxIdx := min(maxClaudeLevel-1, len(claudePrompts)-1)
-	// Gentler curve — most slaps land in 0-20 range
-	scale := 8.0
-	idx := min(int(float64(maxClaudeLevel)*(1.0-math.Exp(-(score-1)/scale))), maxIdx)
+	bucketIdx := scoreToBucket(score)
+	bucket := claudeBuckets[bucketIdx]
 
-	prompt := claudePrompts[idx]
+	// Skip keystroke injection for audio-only levels
+	if !bucket.typed {
+		fmt.Printf("🐾 slap → %s [%.2fg] (audio only)\n", bucket.name, amplitude)
+		return
+	}
+
+	// Pick a random prompt from this bucket
+	prompt := bucket.prompts[rand.Intn(len(bucket.prompts))]
 
 	// Add frustration metadata as an HTML comment
-	meta := fmt.Sprintf(" <!-- frustration: %.2fg level: %d/%d -->", amplitude, idx+1, len(claudePrompts))
+	meta := fmt.Sprintf(" <!-- frustration: %.2fg level: %s -->", amplitude, bucket.name)
 	fullPrompt := prompt + meta
 
 	// Escape for osascript (double quotes and backslashes)
@@ -662,7 +706,7 @@ func typeClaudePrompt(score float64, amplitude float64) {
 		fmt.Fprintf(os.Stderr, "spank-claw: submit failed: %v\n", err)
 	}
 
-	fmt.Printf("🐾 slap → level %d/%d [%.2fg]: %s\n", idx+1, len(claudePrompts), amplitude, prompt)
+	fmt.Printf("🐾 slap → %s [%.2fg]: %s\n", bucket.name, amplitude, prompt)
 }
 
 var speakerMu sync.Mutex

@@ -85,20 +85,18 @@ sudo spank-claw --claude --prompts my-prompts.json
 
 ```json
 {
-  "levels": {
-    "gentle":     ["try again sweetie", "not quite"],
-    "annoyed":    ["no, the OTHER file", "read the task"],
-    "frustrated": ["UNDO THAT", "WHY"],
-    "furious":    ["REVERT. EVERYTHING."],
-    "rage":       ["..."],
-    "despair":    ["I give up"],
-    "acceptance": ["ok. let's start over."]
-  },
-  "max_typed_level": 35
+  "levels": [
+    {"name": "gentle",     "prompts": ["try again sweetie", "not quite"]},
+    {"name": "annoyed",    "prompts": ["no, the OTHER file", "read the task"]},
+    {"name": "frustrated", "prompts": ["UNDO THAT", "WHY"]},
+    {"name": "furious",    "prompts": ["REVERT. EVERYTHING."]},
+    {"name": "rage",       "typed": false, "prompts": ["..."]},
+    {"name": "acceptance", "typed": false, "prompts": ["ok. let's start over."]}
+  ]
 }
 ```
 
-The flat array format also works: `{"prompts": ["level 1", "level 2", ...]}`
+Each level is a bucket. Score escalates through buckets in order. A random prompt is picked from the active bucket. Set `"typed": false` on levels that should only play audio (no keystroke injection).
 
 ## Calibration tips
 
