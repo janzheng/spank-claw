@@ -62,14 +62,15 @@ sudo spank-claw --volume-scaling        # harder slaps = louder audio
 Intensity builds over a rolling 5-minute window with exponential decay. One slap is a gentle nudge. Sustained slapping is a code review.
 
 ```
-gentle:     "hmm, that's not quite what I meant"
-annoyed:    "wrong direction -- re-read TASKS.md"
-frustrated: "STOP. Read the spec. THEN code."
-furious:    "STOP. BREATHE. READ THE TASK. DO ONLY THE TASK."
-            (prompt injection caps here for safety)
-rage:       audio only (some things should only be screamed, not typed)
-despair:    audio only
-acceptance: audio only
+gentle      (1-5):   "hmm, that's not quite what I meant"
+annoyed     (6-10):  "wrong direction -- re-read TASKS.md"
+frustrated  (11-20): "STOP. Read the spec. THEN code."
+furious     (21-29): "STOP. BREATHE. READ THE TASK. DO ONLY THE TASK."
+rage        (30-35): "REVERT. EVERYTHING. NOW."
+                     (prompt injection caps at 35 for safety)
+rage        (36-39): audio only
+despair     (40-47): audio only  (some things should only be
+acceptance  (48-57): audio only   screamed, not typed)
 ```
 
 Each prompt includes metadata: `<!-- frustration: 0.47g level: 23/60 -->`
