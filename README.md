@@ -8,18 +8,9 @@
 
 Slap your MacBook lightly: nudge your claw to try again. Slap it hard: send it scurrying back to fix what it broke. Slap it repeatedly: well, things escalate.
 
-Your frustration, quantified in g-force, typed directly into the terminal. The claw has no idea the prompt came from a slap. The claw apologizes anyway.
-
 Because sometimes `Ctrl+C` doesn't convey enough discipline.
 
-```bash
-sudo spank-claw --claude --sexy
-# your laptop now has feelings AND an escalation policy
-```
-
-> "Productivity went up 300%. Mostly because I stopped retyping 'no, the OTHER file' and started slapping instead." -- the first and only tester
-
-Fork of [taigrr/spank](https://github.com/taigrr/spank). All original modes still work (`--sexy`, `--halo`, `--lizard`, `--custom`). `--claude` just adds the prompt injection on top.
+Fork of [taigrr/spank](https://github.com/taigrr/spank).
 
 ## Install
 
@@ -71,20 +62,42 @@ sudo spank-claw --volume-scaling        # harder slaps = louder audio
 Intensity builds over a rolling 5-minute window with exponential decay. One slap is a gentle nudge. Sustained slapping is a code review.
 
 ```
-Light tap  (level 1-10):  "hmm, that's not quite what I meant"
-Annoyed    (level 11-20): "I said the OTHER file"
-Frustrated (level 21-30): "WHY IS THERE A NEW FILE I DIDN'T ASK FOR"
-Furious    (level 31-35): "STOP. BREATHE. READ THE TASK. DO ONLY THE TASK."
-                          (prompt injection caps here for safety)
-Audio-only (level 36-60): sounds escalate but prompts stop
-                          (some things should only be screamed, not typed)
+gentle:     "hmm, that's not quite what I meant"
+annoyed:    "wrong direction -- re-read TASKS.md"
+frustrated: "STOP. Read the spec. THEN code."
+furious:    "STOP. BREATHE. READ THE TASK. DO ONLY THE TASK."
+            (prompt injection caps here for safety)
+rage:       audio only (some things should only be screamed, not typed)
+despair:    audio only
+acceptance: audio only
 ```
 
-Each prompt includes metadata so the AI knows exactly how angry you are:
+Each prompt includes metadata: `<!-- frustration: 0.47g level: 23/60 -->`
 
+### Custom prompts
+
+Edit `prompts.json` or pass your own with `--prompts`:
+
+```bash
+sudo spank-claw --claude --prompts my-prompts.json
 ```
-<!-- frustration: 0.47g level: 23/60 -->
+
+```json
+{
+  "levels": {
+    "gentle":     ["try again sweetie", "not quite"],
+    "annoyed":    ["no, the OTHER file", "read the task"],
+    "frustrated": ["UNDO THAT", "WHY"],
+    "furious":    ["REVERT. EVERYTHING."],
+    "rage":       ["..."],
+    "despair":    ["I give up"],
+    "acceptance": ["ok. let's start over."]
+  },
+  "max_typed_level": 35
+}
 ```
+
+The flat array format also works: `{"prompts": ["level 1", "level 2", ...]}`
 
 ## Calibration tips
 

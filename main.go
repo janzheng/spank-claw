@@ -71,11 +71,18 @@ var (
 // Audio modes go to 60, but typed prompts into a live session cap here.
 var maxClaudeLevel = 35
 
-// promptsFile is the JSON format for custom prompts.
+// promptsFile supports two JSON formats:
+//   Named levels: {"levels": {"gentle": [...], "annoyed": [...], ...}}
+//   Flat array:   {"prompts": ["level 1", "level 2", ...]}
+// Named levels are flattened in order: gentle -> annoyed -> frustrated -> furious -> rage -> despair -> acceptance
 type promptsFile struct {
-	Prompts       []string `json:"prompts"`
-	MaxTypedLevel int      `json:"max_typed_level,omitempty"`
+	Levels        map[string][]string `json:"levels,omitempty"`
+	Prompts       []string            `json:"prompts,omitempty"`
+	MaxTypedLevel int                 `json:"max_typed_level,omitempty"`
 }
+
+// levelOrder defines the escalation order for named levels.
+var levelOrder = []string{"gentle", "annoyed", "frustrated", "furious", "rage", "despair", "acceptance"}
 
 // loadCustomPrompts replaces the default prompts with a JSON file.
 func loadCustomPrompts(path string) error {
@@ -87,10 +94,39 @@ func loadCustomPrompts(path string) error {
 	if err := json.Unmarshal(data, &pf); err != nil {
 		return fmt.Errorf("invalid prompts JSON: %w", err)
 	}
-	if len(pf.Prompts) == 0 {
-		return fmt.Errorf("prompts array is empty")
+
+	if len(pf.Levels) > 0 {
+		// Named levels format — flatten in escalation order
+		var all []string
+		for _, level := range levelOrder {
+			if prompts, ok := pf.Levels[level]; ok {
+				all = append(all, prompts...)
+			}
+		}
+		// Also include any custom level names not in the standard order
+		for level, prompts := range pf.Levels {
+			found := false
+			for _, std := range levelOrder {
+				if level == std {
+					found = true
+					break
+				}
+			}
+			if !found {
+				all = append(all, prompts...)
+			}
+		}
+		if len(all) == 0 {
+			return fmt.Errorf("no prompts found in levels")
+		}
+		claudePrompts = all
+	} else if len(pf.Prompts) > 0 {
+		// Flat array format (backward compatible)
+		claudePrompts = pf.Prompts
+	} else {
+		return fmt.Errorf("prompts JSON must have either \"levels\" or \"prompts\"")
 	}
-	claudePrompts = pf.Prompts
+
 	if pf.MaxTypedLevel > 0 {
 		maxClaudeLevel = pf.MaxTypedLevel
 	}
