@@ -54,6 +54,7 @@ var (
 	haloMode     bool
 	lizardMode   bool
 	claudeMode   bool
+	promptsPath  string
 	customPath   string
 	customFiles  []string
 	fastMode     bool
@@ -66,7 +67,38 @@ var (
 	speedRatio     float64
 )
 
-// Claude mode frustration prompts — 60 levels of escalation
+// maxClaudeLevel caps how high typed prompts can escalate.
+// Audio modes go to 60, but typed prompts into a live session cap here.
+var maxClaudeLevel = 35
+
+// promptsFile is the JSON format for custom prompts.
+type promptsFile struct {
+	Prompts       []string `json:"prompts"`
+	MaxTypedLevel int      `json:"max_typed_level,omitempty"`
+}
+
+// loadCustomPrompts replaces the default prompts with a JSON file.
+func loadCustomPrompts(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var pf promptsFile
+	if err := json.Unmarshal(data, &pf); err != nil {
+		return fmt.Errorf("invalid prompts JSON: %w", err)
+	}
+	if len(pf.Prompts) == 0 {
+		return fmt.Errorf("prompts array is empty")
+	}
+	claudePrompts = pf.Prompts
+	if pf.MaxTypedLevel > 0 {
+		maxClaudeLevel = pf.MaxTypedLevel
+	}
+	fmt.Printf("spank-claw: loaded %d custom prompts (max typed level: %d)\n", len(claudePrompts), maxClaudeLevel)
+	return nil
+}
+
+// Claude mode frustration prompts — 60 levels of escalation (default, overridden by --prompts)
 var claudePrompts = []string{
 	// Level 1-10: Gentle nudges
 	"hmm, that's not quite what I meant",
@@ -322,6 +354,11 @@ within a minute, the more intense the sounds become.`,
 			if claudeMode {
 				tuning.minAmplitude = 0.35
 				tuning.cooldown = 1200 * time.Millisecond
+				if promptsPath != "" {
+					if err := loadCustomPrompts(promptsPath); err != nil {
+						return fmt.Errorf("loading prompts: %w", err)
+					}
+				}
 			}
 			// Explicit flags always override preset defaults
 			if cmd.Flags().Changed("min-amplitude") {
@@ -339,6 +376,7 @@ within a minute, the more intense the sounds become.`,
 	cmd.Flags().BoolVarP(&haloMode, "halo", "H", false, "Enable halo mode")
 	cmd.Flags().BoolVarP(&lizardMode, "lizard", "l", false, "Enable lizard mode (escalating intensity)")
 	cmd.Flags().BoolVar(&claudeMode, "claude", false, "Add prompt injection: types frustration-scaled prompts into active terminal (stacks with any audio mode)")
+	cmd.Flags().StringVar(&promptsPath, "prompts", "", "Path to custom prompts JSON file (see prompts.json for format)")
 	cmd.Flags().StringVarP(&customPath, "custom", "c", "", "Path to custom MP3 audio directory")
 	cmd.Flags().BoolVar(&fastMode, "fast", false, "Enable faster detection tuning (shorter cooldown, higher sensitivity)")
 	cmd.Flags().StringSliceVar(&customFiles, "custom-files", nil, "Comma-separated list of custom MP3 files")
@@ -557,10 +595,7 @@ func listenForSlaps(ctx context.Context, pack *soundPack, accelRing *shm.RingBuf
 // terminal window using macOS Accessibility (osascript). The slap
 // tracker's escalation score selects the prompt level.
 func typeClaudePrompt(score float64, amplitude float64) {
-	// Map score to prompt index, capped at level 35.
-	// Above 35 the prompts become destructive ("REVERT EVERYTHING", "git stash drop").
-	// Audio modes can go to 60. Typing prompts into a live session should not.
-	const maxClaudeLevel = 35
+	// Map score to prompt index, capped at maxClaudeLevel.
 	maxIdx := min(maxClaudeLevel-1, len(claudePrompts)-1)
 	// Gentler curve — most slaps land in 0-20 range
 	scale := 8.0
