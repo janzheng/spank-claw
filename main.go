@@ -54,6 +54,7 @@ var (
 	haloMode     bool
 	lizardMode   bool
 	claudeMode   bool
+	escalateMode bool
 	promptsPath  string
 	customPath   string
 	customFiles  []string
@@ -147,11 +148,33 @@ func loadCustomPrompts(path string) error {
 	return nil
 }
 
-// scoreToBucket maps an escalation score to a bucket index.
+// amplitudeToBucket maps a single slap's g-force to a bucket index.
+// Default mode: each slap is judged independently by its force.
+// No rolling window, no memory. Hard slap = high bucket. Light tap = low bucket.
+func amplitudeToBucket(amplitude float64) int {
+	n := len(claudeBuckets)
+	// Map amplitude ranges to buckets:
+	// 0.0-0.4g = first bucket, then linearly spread up to ~1.5g = last bucket
+	// Most slaps are 0.3-0.8g, so the interesting range is there.
+	t := (amplitude - 0.2) / 1.2 // normalize: 0.2g -> 0.0, 1.4g -> 1.0
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	idx := int(t * float64(n))
+	if idx >= n {
+		idx = n - 1
+	}
+	return idx
+}
+
+// scoreToBucket maps an escalation score to a bucket index (--escalate mode).
 // Uses 1-exp(-x) curve spread across the number of buckets.
 func scoreToBucket(score float64) int {
 	n := len(claudeBuckets)
-	scale := 4.0 // tuned so sustained slapping reaches the last bucket
+	scale := 4.0
 	idx := int(float64(n) * (1.0 - math.Exp(-(score-1)/scale)))
 	if idx < 0 {
 		idx = 0
@@ -451,6 +474,7 @@ within a minute, the more intense the sounds become.`,
 	cmd.Flags().BoolVarP(&haloMode, "halo", "H", false, "Enable halo mode")
 	cmd.Flags().BoolVarP(&lizardMode, "lizard", "l", false, "Enable lizard mode (escalating intensity)")
 	cmd.Flags().BoolVar(&claudeMode, "claude", false, "Add prompt injection: types frustration-scaled prompts into active terminal (stacks with any audio mode)")
+	cmd.Flags().BoolVar(&escalateMode, "escalate", false, "Escalation mode: sustained slapping increases intensity (default: amplitude-based, each slap judged independently)")
 	cmd.Flags().StringVar(&promptsPath, "prompts", "", "Path to custom prompts JSON file (see prompts.json for format)")
 	cmd.Flags().StringVarP(&customPath, "custom", "c", "", "Path to custom MP3 audio directory")
 	cmd.Flags().BoolVar(&fastMode, "fast", false, "Enable faster detection tuning (shorter cooldown, higher sensitivity)")
@@ -671,7 +695,12 @@ func listenForSlaps(ctx context.Context, pack *soundPack, accelRing *shm.RingBuf
 // tracker's escalation score selects the bucket, then a random prompt
 // from that bucket.
 func typeClaudePrompt(score float64, amplitude float64) {
-	bucketIdx := scoreToBucket(score)
+	var bucketIdx int
+	if escalateMode {
+		bucketIdx = scoreToBucket(score)
+	} else {
+		bucketIdx = amplitudeToBucket(amplitude)
+	}
 	bucket := claudeBuckets[bucketIdx]
 
 	// Skip keystroke injection for audio-only levels
