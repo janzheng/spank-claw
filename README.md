@@ -4,49 +4,143 @@
 
 # spank-claw
 
-> Fork of [taigrr/spank](https://github.com/taigrr/spank) with `--claude` mode.
+**Your AI misbehaved. The claw has opinions.**
 
-**Slap your MacBook, it types angry prompts into Claude Code.**
+A fork of [taigrr/spank](https://github.com/taigrr/spank) that adds `--claude` mode. Same slap detection, same accelerometer wizardry, but now your laptop can type passive-aggressive prompts directly into your Claude Code session when you smack it out of frustration.
 
-Uses the Apple Silicon accelerometer to detect physical hits, then uses macOS Accessibility (osascript) to type frustration-scaled prompts directly into your terminal. The harder you slap, the angrier the prompt. 60 levels of escalation.
+Because sometimes `Ctrl+C` doesn't convey enough emotion.
 
 ```bash
-# Haptic sentiment analysis for AI coding assistants
-sudo spank-claw --claude
+sudo spank-claw --claude --sexy
+# your laptop now has feelings AND an escalation policy
 ```
 
-**How it works:**
-1. Accelerometer detects impact (same as original spank)
-2. Slap tracker scores intensity using rolling 5-minute window with exponential decay
-3. Score maps to one of 60 frustration-scaled prompts
-4. `osascript` types the prompt into the active terminal via macOS Accessibility API
-5. Presses Return to submit
-6. Claude Code receives it as normal user input
+> "I left it running and forgot. Typed a little too hard and Claude started apologizing for things it hadn't done yet." -- the first and only tester
 
-**The escalation curve:**
+## What `--claude` does
+
+`--claude` is a modifier flag that stacks with any audio mode. When a slap is detected, it does two things:
+
+1. Plays the audio response (ow, sexy moan, Halo death sound, whatever mode you picked)
+2. Types a frustration-scaled prompt into your active terminal via macOS Accessibility
+
+The harder and more frequently you slap, the angrier the prompt gets. 60 levels of escalation, capped at 35 for typed prompts (because "git stash drop" should require a keyboard, not a fist).
+
+```bash
+sudo spank-claw --claude                # pain sounds + angry prompts
+sudo spank-claw --claude --sexy         # moans of escalating intensity + angry prompts
+sudo spank-claw --claude --halo         # Master Chief dying + angry prompts
+sudo spank-claw --claude --custom ~/wav # your sounds + angry prompts
+```
+
+### The escalation curve
+
+Intensity builds over a rolling 5-minute window with exponential decay. One slap is a gentle nudge. Sustained slapping is a code review.
+
 ```
 Light tap  (level 1-10):  "hmm, that's not quite what I meant"
-Medium     (level 11-20): "I said the OTHER file"
-Hard slap  (level 21-30): "WHY IS THERE A NEW FILE I DIDN'T ASK FOR"
-Rage       (level 31-40): "REVERT. EVERYTHING. NOW."
-Despair    (level 41-50): "I WOULD RATHER TYPE THIS MYSELF"
-Acceptance (level 51-60): "I forgive you. now please, PLEASE, just change line 47."
+Annoyed    (level 11-20): "I said the OTHER file"
+Frustrated (level 21-30): "WHY IS THERE A NEW FILE I DIDN'T ASK FOR"
+Furious    (level 31-35): "STOP. BREATHE. READ THE TASK. DO ONLY THE TASK."
+                          (prompt injection caps here for safety)
+Audio-only (level 36-60): sounds escalate but prompts stop
+                          (some things should only be screamed, not typed)
 ```
 
-Each prompt includes frustration metadata: `<!-- frustration: 0.47g level: 23/60 -->`
+Each prompt includes metadata so the AI knows exactly how angry you are:
 
-**Requirements:**
-- macOS on Apple Silicon (M2+)
-- Terminal app needs Accessibility permissions (System Preferences → Privacy & Security → Accessibility)
-- `sudo` (for accelerometer access)
+```
+<!-- frustration: 0.47g level: 23/60 -->
+```
 
-**All original spank modes still work:** `--sexy`, `--halo`, `--lizard`, `--custom`
+### Tuning
+
+Claude mode ships with higher defaults than audio modes because **your typing registers as 0.05g impacts** and you do NOT want "hmm, that's not quite what I meant" injected every time you hit Enter.
+
+```bash
+# Defaults for --claude: 0.35g threshold, 1.2s cooldown
+sudo spank-claw --claude
+
+# More sensitive (risky on bouncy desks)
+sudo spank-claw --claude --min-amplitude 0.2
+
+# Less sensitive (only real anger)
+sudo spank-claw --claude --min-amplitude 0.5
+
+# Longer cooldown between prompts
+sudo spank-claw --claude --cooldown 5000
+```
+
+**Calibration tips:**
+- Put your laptop on a hard, flat surface (soft surfaces dampen impacts)
+- Normal typing is ~0.05-0.08g. Default threshold of 0.35g ignores this.
+- A real palm-slap is ~0.3-0.6g. An angry fist is 0.7g+.
+- Moving the laptop sideways also triggers it (the accelerometer reads all axes)
+- If prompts appear while you're just typing, raise `--min-amplitude`
+
+### How it actually works
+
+```
+Accelerometer (IOKit HID, Bosch BMI286 IMU)
+    |
+    v
+Impact detection (STA/LTA, CUSUM, kurtosis — seismology algorithms!)
+    |
+    v
+Slap tracker (rolling 5-min window, 30s exponential decay half-life)
+    |
+    v
+Score -> prompt level (1-exp(-x) curve, gentler for claude mode)
+    |
+    +---> Audio playback (embedded MP3, amplitude-scaled volume)
+    |
+    +---> osascript keystroke injection (macOS Accessibility API)
+          |
+          v
+    Claude Code receives it as normal user input
+    Claude has no idea it came from a slap
+    Claude apologizes anyway
+```
+
+### Requirements
+
+- macOS on Apple Silicon (M2+, or M1 Pro specifically)
+- `sudo` (IOKit HID accelerometer needs root)
+- Terminal app needs Accessibility permissions (System Preferences -> Privacy & Security -> Accessibility)
+- Go 1.26+ (if building from source)
+
+### Install
+
+```bash
+go install github.com/janzheng/spank-claw@latest
+sudo cp "$(go env GOPATH)/bin/spank-claw" /usr/local/bin/spank-claw
+```
+
+Or clone and build:
+
+```bash
+git clone https://github.com/janzheng/spank-claw.git
+cd spank-claw
+go build -o spank-claw .
+sudo ./spank-claw --claude
+```
+
+### The "frustration as metadata" hypothesis
+
+There's an actually interesting idea buried in this joke: **physical frustration is a signal that text can't capture.** When you type "please try again," Claude doesn't know if you're mildly curious or silently fuming. But `<!-- frustration: 0.47g level: 23/60 -->` is unambiguous.
+
+An agent that receives frustration metadata could:
+- Be more conservative at high g-force (don't experiment, do exactly what was asked)
+- Take more creative liberties at low g-force (user is calm, room to try things)
+- Detect escalation patterns (3 slaps in 60 seconds = fundamentally wrong approach)
+
+Is this a good idea? Absolutely not. Is it a better feedback mechanism than passive-aggressively rewriting your prompt for the fourth time? Maybe.
 
 ---
 
-*Original spank README follows:*
+## All original spank features
 
----
+Everything from [taigrr/spank](https://github.com/taigrr/spank) works unchanged. `--claude` just adds prompt injection on top.
 
 # spank (original)
 
