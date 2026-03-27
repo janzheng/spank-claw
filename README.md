@@ -6,7 +6,9 @@
 
 **Your AI misbehaved. The claw has opinions.**
 
-A fork of [taigrr/spank](https://github.com/taigrr/spank) that adds `--claude` mode. Same slap detection, same accelerometer wizardry, but now your laptop can type passive-aggressive prompts directly into your Claude Code session when you smack it out of frustration.
+spank-claw turns your MacBook into a frustration-to-prompt interface. Slap it lightly, it nudges Claude to try again. Slap it hard, it tells Claude to stop, breathe, and read the task. Slap it repeatedly, well -- things escalate.
+
+Uses the Apple Silicon accelerometer (yes, your laptop has one) to detect impacts, then types passive-aggressive prompts directly into your active Claude Code session via macOS Accessibility. Claude has no idea the prompt came from a slap. Claude apologizes anyway.
 
 Because sometimes `Ctrl+C` doesn't convey enough emotion.
 
@@ -15,7 +17,9 @@ sudo spank-claw --claude --sexy
 # your laptop now has feelings AND an escalation policy
 ```
 
-> "I left it running and forgot. Typed a little too hard and Claude started apologizing for things it hadn't done yet." -- the first and only tester
+> "Productivity went up 300%. Mostly because I stopped retyping 'no, the OTHER file' and started slapping instead." -- the first and only tester
+
+Fork of [taigrr/spank](https://github.com/taigrr/spank). All original modes still work (`--sexy`, `--halo`, `--lizard`). `--claude` just adds the prompt injection on top.
 
 ## What `--claude` does
 
