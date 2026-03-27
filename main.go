@@ -1,4 +1,6 @@
-// spank detects slaps/hits on the laptop and plays audio responses.
+// spank-claw detects slaps/hits on the laptop and types frustration-scaled
+// prompts into Claude Code (or plays audio responses in classic modes).
+// Fork of github.com/taigrr/spank with --claude mode added.
 // It reads the Apple Silicon accelerometer directly via IOKit HID —
 // no separate sensor daemon required. Needs sudo.
 package main
@@ -14,6 +16,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sort"
 	"strings"
@@ -50,6 +53,7 @@ var (
 	sexyMode     bool
 	haloMode     bool
 	lizardMode   bool
+	claudeMode   bool
 	customPath   string
 	customFiles  []string
 	fastMode     bool
@@ -61,6 +65,76 @@ var (
 	pausedMu       sync.RWMutex
 	speedRatio     float64
 )
+
+// Claude mode frustration prompts — 60 levels of escalation
+var claudePrompts = []string{
+	// Level 1-10: Gentle nudges
+	"hmm, that's not quite what I meant",
+	"could you try that again?",
+	"not exactly, let me clarify",
+	"close but not right, re-read what I asked",
+	"no, please look at the task again carefully",
+	"that's not it, let's step back",
+	"wrong direction — re-read TASKS.md",
+	"stop, that's not what I asked for",
+	"please undo that and try again",
+	"NO. Read the requirements again.",
+	// Level 11-20: Getting frustrated
+	"I said the OTHER file",
+	"That's literally the opposite of what I asked",
+	"Why are you adding features I didn't request?",
+	"STOP. Read the spec. THEN code.",
+	"You're overcomplicating this. Simpler.",
+	"Did you even read TASKS.md?",
+	"UNDO THAT. All of it.",
+	"That breaks everything. Revert.",
+	"I don't want a refactor, I want the bug FIXED",
+	"STOP ADDING COMMENTS TO CODE YOU DIDN'T WRITE",
+	// Level 21-30: Angry
+	"REVERT YOUR LAST CHANGE RIGHT NOW",
+	"I SAID ONE LINE. ONE. LINE.",
+	"WHY IS THERE A NEW FILE I DIDN'T ASK FOR",
+	"DO NOT TOUCH ANYTHING ELSE",
+	"STOP. BREATHE. READ THE TASK. DO ONLY THE TASK.",
+	"YOU BROKE THE TESTS. FIX THEM BEFORE ANYTHING ELSE.",
+	"I'M GOING TO BE VERY SPECIFIC: ONLY CHANGE LINE 47",
+	"REMOVE EVERYTHING YOU JUST ADDED. ALL OF IT.",
+	"THIS IS THE THIRD TIME I'VE ASKED FOR THE SAME THING",
+	"DO NOT WRITE A SINGLE LINE OF CODE UNTIL I SAY SO",
+	// Level 31-40: Rage
+	"REVERT. EVERYTHING. NOW.",
+	"WHAT PART OF 'DON'T MODIFY THAT FILE' WAS UNCLEAR",
+	"I EXPLICITLY SAID NOT TO DO THAT",
+	"YOU DELETED MY WORK. MY ACTUAL WORK.",
+	"GIT CHECKOUT -- . RIGHT NOW",
+	"STOP STOP STOP STOP STOP",
+	"READ. THE. ERROR. MESSAGE.",
+	"IT'S RIGHT THERE IN THE LOGS. LOOK.",
+	"I SWEAR IF YOU ADD ONE MORE HELPER FUNCTION",
+	"YOU HAVE BEEN DOING THE WRONG TASK FOR FIVE MINUTES",
+	// Level 41-50: Despair
+	"I DON'T EVEN KNOW WHERE TO START WITH THIS",
+	"HOW DID YOU MAKE IT WORSE",
+	"THERE WERE 3 FILES AND YOU CHANGED 47",
+	"THE FIX IS LITERALLY ONE CHARACTER",
+	"I'M GOING TO DESCRIBE THIS VERY SLOWLY",
+	"FORGET EVERYTHING. START FROM SCRATCH.",
+	"git stash && git stash drop. YES I MEAN IT.",
+	"I WOULD RATHER TYPE THIS MYSELF",
+	"CTRL+Z CTRL+Z CTRL+Z CTRL+Z CTRL+Z",
+	"PLEASE JUST... STOP... AND LISTEN...",
+	// Level 51-60: Transcendence
+	"...",
+	"ok",
+	"fine",
+	"you know what, let me just do it",
+	"I'm not mad, I'm disappointed",
+	"/clear",
+	"let's start over. from the beginning. calmly.",
+	"I forgive you. now please, PLEASE, just change line 47.",
+	"<!-- frustration: maximum -->",
+	"sudo spank --claude --uninstall-self",
+}
 
 // sensorReady is closed once shared memory is created and the sensor
 // worker is about to enter the CFRunLoop.
@@ -243,7 +317,13 @@ within a minute, the more intense the sounds become.`,
 			if fastMode {
 				tuning = applyFastOverlay(tuning)
 			}
-			// Explicit flags override fast preset defaults
+			// Claude mode: raise defaults so typing doesn't trigger prompts.
+			// Audio at 0.05g is fun. Injecting prompts at 0.05g is chaos.
+			if claudeMode {
+				tuning.minAmplitude = 0.35
+				tuning.cooldown = 1200 * time.Millisecond
+			}
+			// Explicit flags always override preset defaults
 			if cmd.Flags().Changed("min-amplitude") {
 				tuning.minAmplitude = minAmplitude
 			}
@@ -258,6 +338,7 @@ within a minute, the more intense the sounds become.`,
 	cmd.Flags().BoolVarP(&sexyMode, "sexy", "s", false, "Enable sexy mode")
 	cmd.Flags().BoolVarP(&haloMode, "halo", "H", false, "Enable halo mode")
 	cmd.Flags().BoolVarP(&lizardMode, "lizard", "l", false, "Enable lizard mode (escalating intensity)")
+	cmd.Flags().BoolVar(&claudeMode, "claude", false, "Add prompt injection: types frustration-scaled prompts into active terminal (stacks with any audio mode)")
 	cmd.Flags().StringVarP(&customPath, "custom", "c", "", "Path to custom MP3 audio directory")
 	cmd.Flags().BoolVar(&fastMode, "fast", false, "Enable faster detection tuning (shorter cooldown, higher sensitivity)")
 	cmd.Flags().StringSliceVar(&customFiles, "custom-files", nil, "Comma-separated list of custom MP3 files")
@@ -277,6 +358,7 @@ func run(ctx context.Context, tuning runtimeTuning) error {
 		return fmt.Errorf("spank requires root privileges for accelerometer access, run with: sudo spank")
 	}
 
+	// --claude is a modifier, not a mode — it stacks with any audio mode
 	modeCount := 0
 	if sexyMode {
 		modeCount++
@@ -291,7 +373,7 @@ func run(ctx context.Context, tuning runtimeTuning) error {
 		modeCount++
 	}
 	if modeCount > 1 {
-		return fmt.Errorf("--sexy, --halo, --lizard, and --custom/--custom-files are mutually exclusive; pick one")
+		return fmt.Errorf("--sexy, --halo, --lizard, and --custom/--custom-files are mutually exclusive; pick one (--claude can be added to any)")
 	}
 
 	if tuning.minAmplitude < 0 || tuning.minAmplitude > 1 {
@@ -440,10 +522,10 @@ func listenForSlaps(ctx context.Context, pack *soundPack, accelRing *shm.RingBuf
 		}
 		lastEventTime = ev.Time
 
-		if time.Since(lastYell) <= time.Duration(cooldownMs)*time.Millisecond {
+		if time.Since(lastYell) <= tuning.cooldown {
 			continue
 		}
-		if ev.Amplitude < minAmplitude {
+		if ev.Amplitude < tuning.minAmplitude {
 			continue
 		}
 
@@ -465,7 +547,51 @@ func listenForSlaps(ctx context.Context, pack *soundPack, accelRing *shm.RingBuf
 			fmt.Printf("slap #%d [%s amp=%.5fg] -> %s\n", num, ev.Severity, ev.Amplitude, file)
 		}
 		go playAudio(pack, file, ev.Amplitude, &speakerInit)
+		if claudeMode {
+			go typeClaudePrompt(score, ev.Amplitude)
+		}
 	}
+}
+
+// typeClaudePrompt types a frustration-scaled prompt into the active
+// terminal window using macOS Accessibility (osascript). The slap
+// tracker's escalation score selects the prompt level.
+func typeClaudePrompt(score float64, amplitude float64) {
+	// Map score to prompt index, capped at level 35.
+	// Above 35 the prompts become destructive ("REVERT EVERYTHING", "git stash drop").
+	// Audio modes can go to 60. Typing prompts into a live session should not.
+	const maxClaudeLevel = 35
+	maxIdx := min(maxClaudeLevel-1, len(claudePrompts)-1)
+	// Gentler curve — most slaps land in 0-20 range
+	scale := 8.0
+	idx := min(int(float64(maxClaudeLevel)*(1.0-math.Exp(-(score-1)/scale))), maxIdx)
+
+	prompt := claudePrompts[idx]
+
+	// Add frustration metadata as an HTML comment
+	meta := fmt.Sprintf(" <!-- frustration: %.2fg level: %d/%d -->", amplitude, idx+1, len(claudePrompts))
+	fullPrompt := prompt + meta
+
+	// Escape for osascript (double quotes and backslashes)
+	escaped := strings.ReplaceAll(fullPrompt, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+
+	// Type the prompt into the active window
+	script := fmt.Sprintf(`tell application "System Events" to keystroke "%s"`, escaped)
+	cmd := exec.Command("osascript", "-e", script)
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "spank-claw: keystroke failed: %v\n", err)
+		return
+	}
+
+	// Press Return to submit
+	submitScript := `tell application "System Events" to key code 36`
+	submitCmd := exec.Command("osascript", "-e", submitScript)
+	if err := submitCmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "spank-claw: submit failed: %v\n", err)
+	}
+
+	fmt.Printf("🐾 slap → level %d/%d [%.2fg]: %s\n", idx+1, len(claudePrompts), amplitude, prompt)
 }
 
 var speakerMu sync.Mutex

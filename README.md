@@ -1,8 +1,54 @@
 <p align="center">
-  <img src="doc/logo.png" alt="spank logo" width="200">
+  <img src="doc/logo.png" alt="spank-claw logo" width="200">
 </p>
 
-# spank
+# spank-claw
+
+> Fork of [taigrr/spank](https://github.com/taigrr/spank) with `--claude` mode.
+
+**Slap your MacBook, it types angry prompts into Claude Code.**
+
+Uses the Apple Silicon accelerometer to detect physical hits, then uses macOS Accessibility (osascript) to type frustration-scaled prompts directly into your terminal. The harder you slap, the angrier the prompt. 60 levels of escalation.
+
+```bash
+# Haptic sentiment analysis for AI coding assistants
+sudo spank-claw --claude
+```
+
+**How it works:**
+1. Accelerometer detects impact (same as original spank)
+2. Slap tracker scores intensity using rolling 5-minute window with exponential decay
+3. Score maps to one of 60 frustration-scaled prompts
+4. `osascript` types the prompt into the active terminal via macOS Accessibility API
+5. Presses Return to submit
+6. Claude Code receives it as normal user input
+
+**The escalation curve:**
+```
+Light tap  (level 1-10):  "hmm, that's not quite what I meant"
+Medium     (level 11-20): "I said the OTHER file"
+Hard slap  (level 21-30): "WHY IS THERE A NEW FILE I DIDN'T ASK FOR"
+Rage       (level 31-40): "REVERT. EVERYTHING. NOW."
+Despair    (level 41-50): "I WOULD RATHER TYPE THIS MYSELF"
+Acceptance (level 51-60): "I forgive you. now please, PLEASE, just change line 47."
+```
+
+Each prompt includes frustration metadata: `<!-- frustration: 0.47g level: 23/60 -->`
+
+**Requirements:**
+- macOS on Apple Silicon (M2+)
+- Terminal app needs Accessibility permissions (System Preferences → Privacy & Security → Accessibility)
+- `sudo` (for accelerometer access)
+
+**All original spank modes still work:** `--sexy`, `--halo`, `--lizard`, `--custom`
+
+---
+
+*Original spank README follows:*
+
+---
+
+# spank (original)
 
 **English** | [简体中文][readme-zh-link]
 
