@@ -57,23 +57,31 @@ sudo spank-claw --speed 0.7             # slower and deeper audio
 sudo spank-claw --volume-scaling        # harder slaps = louder audio
 ```
 
-## The escalation curve
+## How levels work
 
-Intensity builds over a rolling 5-minute window with exponential decay. One slap is a gentle nudge. Sustained slapping is a code review.
+**Default: amplitude-based.** Each slap is judged independently by how hard you hit. No memory. No rolling window. Just force.
 
 ```
-gentle      (1-5):   "hmm, that's not quite what I meant"
-annoyed     (6-10):  "wrong direction -- re-read TASKS.md"
-frustrated  (11-20): "STOP. Read the spec. THEN code."
-furious     (21-29): "STOP. BREATHE. READ THE TASK. DO ONLY THE TASK."
-rage        (30-35): "REVERT. EVERYTHING. NOW."
-                     (prompt injection caps at 35 for safety)
-rage        (36-39): audio only
-despair     (40-47): audio only  (some things should only be
-acceptance  (48-57): audio only   screamed, not typed)
+gentle:      ~0.2-0.4g  "hmm, that's not quite what I meant"
+annoyed:     ~0.4-0.5g  "wrong direction -- re-read TASKS.md"
+frustrated:  ~0.5-0.7g  "STOP. Read the spec. THEN code."
+furious:     ~0.7-0.9g  "STOP. BREATHE. READ THE TASK. DO ONLY THE TASK."
+rage:        ~0.9g+     "REVERT. EVERYTHING. NOW."
+despair:     audio only  (typed: false -- some things should only be
+acceptance:  audio only   screamed, not typed)
 ```
 
-Each prompt includes metadata: `<!-- frustration: 0.47g level: 23/60 -->`
+A random prompt is picked from the active bucket. Each prompt includes metadata:
+
+```
+<!-- frustration: 0.47g level: frustrated -->
+```
+
+**`--escalate` mode:** Rolling 5-minute window with exponential decay. Sustained slapping climbs through levels regardless of force. One slap = gentle. Ten slaps in a minute = furious.
+
+```bash
+sudo spank-claw --claude --escalate
+```
 
 ### Custom prompts
 
@@ -96,7 +104,7 @@ sudo spank-claw --claude --prompts my-prompts.json
 }
 ```
 
-Each level is a bucket. Score escalates through buckets in order. A random prompt is picked from the active bucket. Set `"typed": false` on levels that should only play audio (no keystroke injection).
+Each level is a bucket. Amplitude (default) or escalation score (`--escalate`) picks the bucket. A random prompt is picked from within it. Set `"typed": false` on levels that should only play audio.
 
 ## Calibration tips
 
@@ -117,19 +125,19 @@ Accelerometer (IOKit HID, Bosch BMI286 IMU)
 Impact detection (STA/LTA, CUSUM, kurtosis -- seismology algorithms!)
     |
     v
-Slap tracker (rolling 5-min window, 30s exponential decay half-life)
+Amplitude -> bucket (default: force-based, --escalate: rolling window)
     |
     v
-Score -> prompt level (1-exp(-x) curve, gentler for claude mode)
+Random prompt from bucket (if typed: true)
     |
-    +---> Audio playback (embedded MP3, amplitude-scaled volume)
+    +---> Audio playback (embedded MP3, any mode)
     |
-    +---> osascript keystroke injection (macOS Accessibility API)
+    +---> osascript keystroke injection (if --claude)
           |
           v
     Claude Code receives it as normal user input
-    Claude has no idea it came from a slap
-    Claude apologizes anyway
+    The claw has no idea it came from a slap
+    The claw apologizes anyway
 ```
 
 ## The "frustration as metadata" hypothesis
