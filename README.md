@@ -6,13 +6,11 @@
 
 **Bad claw. Bad.**
 
-Your AI agent went off-script again. Positive reinforcement didn't work. We tried the other kind.
+Slap your MacBook lightly: nudge your claw to try again. Slap it hard: send it scurrying back to fix what it broke. Slap it repeatedly: well, things escalate.
 
-spank-claw turns your MacBook into a correctional device for AI agents. Slap it lightly, it nudges Claude to try again. Slap it hard, it tells Claude to REVERT EVERYTHING. Slap it repeatedly -- well, things escalate.
+Your frustration, quantified in g-force, typed directly into the terminal. The claw has no idea the prompt came from a slap. The claw apologizes anyway.
 
-Your frustration, quantified in g-force, typed directly into the terminal. Claude has no idea the prompt came from a slap. Claude apologizes anyway.
-
-Because sometimes `Ctrl+C` doesn't convey enough emotion.
+Because sometimes `Ctrl+C` doesn't convey enough discipline.
 
 ```bash
 sudo spank-claw --claude --sexy
