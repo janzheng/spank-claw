@@ -4,11 +4,13 @@
 
 # spank-claw
 
-**Your AI misbehaved. The claw has opinions.**
+**Bad claw. Bad.**
 
-spank-claw turns your MacBook into a frustration-to-prompt interface. Slap it lightly, it nudges Claude to try again. Slap it hard, it tells Claude to stop, breathe, and read the task. Slap it repeatedly, well -- things escalate.
+Your AI agent went off-script again. Positive reinforcement didn't work. We tried the other kind.
 
-Uses the Apple Silicon accelerometer (yes, your laptop has one) to detect impacts, then types passive-aggressive prompts directly into your active Claude Code session via macOS Accessibility. Claude has no idea the prompt came from a slap. Claude apologizes anyway.
+spank-claw turns your MacBook into a correctional device for AI agents. Slap it lightly, it nudges Claude to try again. Slap it hard, it tells Claude to REVERT EVERYTHING. Slap it repeatedly -- well, things escalate.
+
+Your frustration, quantified in g-force, typed directly into the terminal. Claude has no idea the prompt came from a slap. Claude apologizes anyway.
 
 Because sometimes `Ctrl+C` doesn't convey enough emotion.
 
